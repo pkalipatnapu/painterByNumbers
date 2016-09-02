@@ -35,6 +35,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import os.path
 import re
 import sys
@@ -57,6 +58,8 @@ tf.app.flags.DEFINE_string(
     """Path to classify_image_graph_def.pb, """
     """imagenet_synset_to_human_label_map.txt, and """
     """imagenet_2012_challenge_label_map_proto.pbtxt.""")
+tf.app.flags.DEFINE_string('image_training_dir', '/Users/shahk/Downloads/train_2/',
+                           """Absolute path to image file.""")
 tf.app.flags.DEFINE_string('image_file', '',
                            """Absolute path to image file.""")
 tf.app.flags.DEFINE_integer('num_top_predictions', 5,
@@ -142,7 +145,7 @@ def create_graph():
     _ = tf.import_graph_def(graph_def, name='')
 
 
-def run_inference_on_image(image):
+def run_inference_on_images(image_dir):
   """Runs inference on an image.
 
   Args:
@@ -151,13 +154,8 @@ def run_inference_on_image(image):
   Returns:
     Nothing
   """
-  if not tf.gfile.Exists(image):
-    tf.logging.fatal('File does not exist %s', image)
-  image_data = tf.gfile.FastGFile(image, 'rb').read()
-
   # Creates graph from saved GraphDef.
   create_graph()
-
   with tf.Session() as sess:
     # Some useful tensors:
     # 'softmax:0': A tensor containing the normalized prediction across
@@ -168,10 +166,18 @@ def run_inference_on_image(image):
     #   encoding of the image.
     # Runs the softmax tensor by feeding the image_data as input to the graph.
     pool_tensor = sess.graph.get_tensor_by_name('pool_3:0')
-    predictions = sess.run(pool_tensor,
-                           {'DecodeJpeg/contents:0': image_data})
-    predictions = np.squeeze(predictions)
-    print(predictions)
+    count = 1
+    for filename in os.listdir(image_dir):
+      try:
+        image_data = tf.gfile.FastGFile(os.path.join(image_dir, filename), 'rb').read()
+        features = sess.run(pool_tensor, {'DecodeJpeg/contents:0': image_data})
+        features = np.squeeze(features)
+      except Exception:
+        continue
+      if (count % 100 == 0):
+        print(features)
+        print("------")
+      count = count+1
 
 def maybe_download_and_extract():
   """Download and extract model tar file."""
@@ -196,7 +202,8 @@ def main(_):
   maybe_download_and_extract()
   image = (FLAGS.image_file if FLAGS.image_file else
            os.path.join(FLAGS.model_dir, 'cropped_panda.jpg'))
-  run_inference_on_image(image)
+  # PLEASE MODIFY the flag for your train dir path.
+  run_inference_on_images(FLAGS.image_training_dir)
 
 
 if __name__ == '__main__':
