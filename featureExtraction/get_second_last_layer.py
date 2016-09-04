@@ -40,6 +40,7 @@ import os.path
 import re
 import sys
 import tarfile
+import csv
 
 import numpy as np
 from six.moves import urllib
@@ -58,8 +59,6 @@ tf.app.flags.DEFINE_string(
     """Path to classify_image_graph_def.pb, """
     """imagenet_synset_to_human_label_map.txt, and """
     """imagenet_2012_challenge_label_map_proto.pbtxt.""")
-tf.app.flags.DEFINE_string('image_training_dir', '/Users/shahk/Downloads/train_2/',
-                           """Absolute path to image file.""")
 tf.app.flags.DEFINE_string('image_file', '',
                            """Absolute path to image file.""")
 tf.app.flags.DEFINE_integer('num_top_predictions', 5,
@@ -145,7 +144,7 @@ def create_graph():
     _ = tf.import_graph_def(graph_def, name='')
 
 
-def run_inference_on_images(image_dir):
+def extract_features_from_images(image_dir, output_file):
   """Runs inference on an image.
 
   Args:
@@ -156,7 +155,8 @@ def run_inference_on_images(image_dir):
   """
   # Creates graph from saved GraphDef.
   create_graph()
-  with tf.Session() as sess:
+
+  with tf.Session() as sess, open(output_file, 'w') as outfile:
     # Some useful tensors:
     # 'softmax:0': A tensor containing the normalized prediction across
     #   1000 labels.
@@ -166,18 +166,24 @@ def run_inference_on_images(image_dir):
     #   encoding of the image.
     # Runs the softmax tensor by feeding the image_data as input to the graph.
     pool_tensor = sess.graph.get_tensor_by_name('pool_3:0')
-    count = 1
+    count = 0
+    accumulated_lines = ''
     for filename in os.listdir(image_dir):
       try:
         image_data = tf.gfile.FastGFile(os.path.join(image_dir, filename), 'rb').read()
         features = sess.run(pool_tensor, {'DecodeJpeg/contents:0': image_data})
         features = np.squeeze(features)
-      except Exception:
+        features_csv = ','.join(str(i) for i in features)
+        accumulated_lines = accumulated_lines + filename + ',' + features_csv + '\n'
+        count += 1
+      except Exception as e:
+        print(e.message)
         continue
-      if (count % 100 == 0):
-        print(features)
-        print("------")
-      count = count+1
+      if count % 1000 == 0:
+        print('Gathered 1000 samples, writing to file')
+        outfile.write(accumulated_lines)
+        accumulated_lines = ''
+        print('---------')
 
 def maybe_download_and_extract():
   """Download and extract model tar file."""
@@ -203,7 +209,7 @@ def main(_):
   image = (FLAGS.image_file if FLAGS.image_file else
            os.path.join(FLAGS.model_dir, 'cropped_panda.jpg'))
   # PLEASE MODIFY the flag for your train dir path.
-  run_inference_on_images(FLAGS.image_training_dir)
+  extract_features_from_images(sys.argv[1], sys.argv[2])
 
 
 if __name__ == '__main__':
